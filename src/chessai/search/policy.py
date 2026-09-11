@@ -4,7 +4,7 @@ import torch.nn as nn
 import numpy as np
 import chess
 from .base import Bot
-from ..encoding import board_to_tensor, move_to_index
+from ..encoding import board_to_tensor, move_to_index, index_to_move
 from ..model import ChessNet
 
 class PolicyBot(Bot):
@@ -23,11 +23,15 @@ class PolicyBot(Bot):
         encoded = board_to_tensor(board).unsqueeze(0)
         encoded = encoded.float().to(self.device)
         with torch.no_grad():
-            y, _ = self.model(encoded)
+            y, v = self.model(encoded)
         moves = list(board.legal_moves)
         idx = torch.tensor([move_to_index(m) for m in moves], device = y.device)
-        best = moves[y.view(-1)[idx].argmax().item()]
-        return best
+        probs = torch.softmax(y.view(-1)[idx], dim = -1)
+        indexing = torch.argsort(probs, descending=True)
+        scores = probs[indexing].tolist()
+        listmoves = [(moves[indexing[i].item()], scores[i] ) for i in range(len(probs))]
+        return listmoves
+        
     
 
 

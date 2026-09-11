@@ -32,11 +32,11 @@ def play_game(white, black, max_moves=400):
     b = chess.Board()
     moves= 0
     while moves < max_moves and b.outcome(claim_draw=True) is None:
-        bot = white if b.turn == chess.WHITE else black
+        engine = white if b.turn == chess.WHITE else black
         moves +=1
-        m = bot.select_move(b)
+        m = engine.play(b)
         if m not in b.legal_moves:
-            raise ValueError(f"{bot.name} returned an illegal move: {m}")
+            raise ValueError(f"{engine.name} returned an illegal move: {m}")
         b.push(m)
     return b
 
