@@ -17,27 +17,34 @@ class PolicyEngine(Engine):
         self.model.load_state_dict(ckpt["model"])
         self.model.eval()
 
-    def analyse(self, board, limit = None):
-        t0 = time.perf_counter()
-        encoded = board_to_tensor(board).unsqueeze(0)
-        encoded = encoded.float().to(self.device)
+    def evaluate(self, boards):
+        encoded = torch.stack([board_to_tensor(b) for b in boards]).float().to(self.device)
         with torch.no_grad():
             y, v = self.model(encoded)
-        moves = list(board.legal_moves)
+
+        legal = [list(b.legal_moves) for b in boards]
+        rows = torch.tensor([i for i, moves in enumerate(legal) for _ in moves],
+                            dtype=torch.long, device=y.device)
+        cols = torch.tensor([move_to_index(m) for moves in legal for m in moves],
+                            dtype=torch.long, device=y.device)
+        
+        masked = torch.full_like(y, float("-inf"))
+        masked[rows, cols] = y[rows, cols]
+        # un seul transfert GPU -> CPU par tenseur, au lieu d'un .item() par coup
+        probs = torch.softmax(masked, dim=-1)[rows, cols].tolist()
+        values = v.view(-1).tolist()
+
+        out = []
+        start = 0
+        for moves, value in zip(legal, values):
+            out.append((moves, probs[start:start + len(moves)], value))
+            start += len(moves)
+        return out
+
+    def analyse(self, board, limit = None):
+        t0 = time.perf_counter()
+        moves, probs, value = self.evaluate([board])[0]
         if not moves:
             raise ValueError("no legal move in this position")
-        idx = torch.tensor([move_to_index(m) for m in moves], dtype = int, device = y.device)
-        probs = torch.softmax(y.view(-1)[idx], dim = -1)
-        indexing = torch.argsort(probs, descending=True)
-        scores = probs[indexing].tolist()
-        listmoves = [(moves[indexing[i].item()], scores[i] ) for i in range(len(probs))]
-        return Analysis(listmoves[0][0], listmoves, v.item(), 1, time.perf_counter()-t0  )
-        
-    
-
-
-
-
-
-
-    
+        listmoves = sorted(zip(moves, probs), key=lambda kv: kv[1], reverse=True)
+        return Analysis(listmoves[0][0], listmoves, value, 1, time.perf_counter()-t0  )

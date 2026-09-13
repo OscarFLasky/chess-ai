@@ -224,6 +224,9 @@ runs/
 *.zst
 *.npy
 
+# Tests
+tests/
+
 # Claude Code local settings
 .claude/settings.local.json
 

@@ -9,6 +9,7 @@ dependencies = [
     "tqdm>=4.66",
     "zstandard>=0.22",
     "fastapi[standard]",
+    "slowapi>=0.1.10",
 ]
 
 

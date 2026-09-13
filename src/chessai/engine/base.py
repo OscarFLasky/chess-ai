@@ -9,7 +9,11 @@ class Analysis:
     nbNodesVisited: int
     elapsed: float
     
-
+@dataclass
+class Limit:
+    time: float | None = None
+    nbNodesMax: int | None = None
+    maxDepth: int | None = None
 
 class Engine:
 
@@ -20,3 +24,5 @@ class Engine:
 
     def play(self, board, limit = None):
         return self.analyse(board,limit).best_move
+
+
