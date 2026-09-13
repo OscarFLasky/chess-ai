@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chess-AI</title>
+
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main class="page">
+  <header class="header">
+    <h1>Chess-AI</h1>
+    <p class="subtitle">Vous jouez les blancs contre le moteur.</p>
+  </header>
+
+  <div id="board"></div>
+
+  <section class="panel">
+    <div class="panel-head">
+      <p class="status" id="status">À vous de jouer, les blancs.</p>
+      <button class="btn" id="reset">Nouvelle partie</button>
+    </div>
+
+    <p class="empty" id="empty">L'analyse du bot apparaîtra ici après votre premier coup.</p>
+
+    <table class="moves" id="moves-table" hidden>
+      <thead>
+        <tr><th>Coup</th><th>Probabilité</th><th></th></tr>
+      </thead>
+      <tbody id="moves"></tbody>
+    </table>
+    <p class="meta" id="meta"></p>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+
+<script>
+const PIECES = "img/chesspieces/wikipedia/{piece}.png";
+const HUMAN = "w";
+
+const game = new Chess();
+let thinking = false;
+// Incrémenté à chaque nouvelle partie : une réponse du bot qui arrive
+// après un reset porte un ancien id et est ignorée.
+let gameId = 0;
+
+const $board = document.getElementById("board");
+const $status = document.getElementById("status");
+const $empty = document.getElementById("empty");
+const $table = document.getElementById("moves-table");
+const $moves = document.getElementById("moves");
+const $meta = document.getElementById("meta");
+
+function setStatus(text, kind) {
+  $status.textContent = text;
+  $status.classList.toggle("error", kind === "error");
+  $status.classList.toggle("thinking", kind === "thinking");
+}
+
+function highlightMove(move) {
+  for (const el of $board.querySelectorAll(".last-move")) el.classList.remove("last-move");
+  if (!move) return;
+  for (const sq of [move.from, move.to]) {
+    $board.querySelector(".square-" + sq)?.classList.add("last-move");
+  }
+}
+
+function outcomeText() {
+  if (game.in_checkmate()) {
+    return game.turn() === HUMAN ? "Échec et mat, le bot gagne." : "Échec et mat, vous gagnez.";
+  }
+  if (game.in_stalemate()) return "Pat, partie nulle.";
+  if (game.in_threefold_repetition()) return "Nulle par répétition.";
+  if (game.insufficient_material()) return "Nulle, matériel insuffisant.";
+  if (game.in_draw()) return "Partie nulle.";
+  return null;
+}
+
+function checkGameOver() {
+  const text = outcomeText();
+  if (text) setStatus(text);
+  return text !== null;
+}
+
+function clearAnalysis() {
+  $moves.innerHTML = "";
+  $meta.textContent = "";
+  $table.hidden = true;
+  $empty.hidden = false;
+}
+
+function renderAnalysis(data) {
+  $moves.innerHTML = "";
+  data.moves.forEach((m, i) => {
+    const pct = (m.prob * 100).toFixed(1);
+    const row = document.createElement("tr");
+    if (i === 0) row.className = "best";
+
+    const san = document.createElement("td");
+    san.textContent = m.san;
+
+    const val = document.createElement("td");
+    val.textContent = pct + " %";
+
+    const barCell = document.createElement("td");
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    bar.style.width = Math.max(2, m.prob * 100) + "%";
+    barCell.appendChild(bar);
+
+    row.append(san, val, barCell);
+    $moves.appendChild(row);
+  });
+
+  $meta.textContent =
+    `Évaluation ${data.value.toFixed(3)} · ${data.nodes} nœud(s) · ` +
+    `${data.elapsed_ms.toFixed(1)} ms · moteur ${data.engine}`;
+
+  $table.hidden = false;
+  $empty.hidden = true;
+}
+
+function uciToMove(uci) {
+  return {
+    from: uci.slice(0, 2),
+    to: uci.slice(2, 4),
+    promotion: uci.length > 4 ? uci[4] : "q",
+  };
+}
+
+async function botMove() {
+  const id = gameId;
+  thinking = true;
+  setStatus("Le bot réfléchit...", "thinking");
+
+  try {
+    const res = await fetch("/moves/analyse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fen: game.fen(), top_k: 5, temperature: 0.0 }),
+    });
+    if (id !== gameId) return;
+
+    if (res.status === 409) {
+      setStatus("Position terminale, le bot n'a aucun coup.");
+      return;
+    }
+    if (!res.ok) {
+      const body = await res.text();
+      if (id !== gameId) return;
+      setStatus("Erreur serveur " + res.status + " : " + body, "error");
+      return;
+    }
+
+    const data = await res.json();
+    if (id !== gameId) return;
+    renderAnalysis(data);
+
+    const played = game.move(uciToMove(data.best_move));
+    if (played === null) {
+      setStatus("Le bot a proposé un coup illégal : " + data.best_move, "error");
+      return;
+    }
+
+    board.position(game.fen());
+    highlightMove(played);
+    if (!checkGameOver()) setStatus("À vous de jouer.");
+  } catch (err) {
+    if (id === gameId) setStatus("Impossible de joindre l'API : " + err.message, "error");
+  } finally {
+    if (id === gameId) thinking = false;
+  }
+}
+
+function onDragStart(source, piece) {
+  if (thinking) return false;
+  if (game.game_over()) return false;
+  if (game.turn() !== HUMAN) return false;
+  return piece[0] === HUMAN;
+}
+
+function onDrop(source, target) {
+  const move = game.move({ from: source, to: target, promotion: "q" });
+  if (move === null) return "snapback";
+
+  highlightMove(move);
+  if (checkGameOver()) {
+    board.position(game.fen());
+    return;
+  }
+  const id = gameId;
+  window.setTimeout(() => { if (id === gameId) botMove(); }, 150);
+}
+
+function onSnapEnd() {
+  board.position(game.fen());
+}
+
+const board = Chessboard("board", {
+  draggable: true,
+  position: "start",
+  pieceTheme: PIECES,
+  onDragStart,
+  onDrop,
+  onSnapEnd,
+});
+
+document.getElementById("reset").addEventListener("click", () => {
+  gameId++;
+  thinking = false;
+  game.reset();
+  board.start();
+  highlightMove(null);
+  clearAnalysis();
+  setStatus("À vous de jouer, les blancs.");
+});
+</script>
+
+</body>
+</html>

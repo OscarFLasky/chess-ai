@@ -1,5 +1,4 @@
 import torch
-from .base import Bot
 from ..encoding import board_to_tensor, move_to_index, index_to_move
 from ..model import ChessNet
 from .base import Engine, Analysis
@@ -11,7 +10,7 @@ class PolicyEngine(Engine):
     name = "Policy"
 
 
-    def __init__(self, ckpt_path="runs/ckpt.pt", device=None):
+    def __init__(self, ckpt_path="runs/ckpt_32000.pt", device=None):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = ChessNet().to(self.device)
         ckpt = torch.load(ckpt_path, map_location=self.device)
@@ -25,7 +24,9 @@ class PolicyEngine(Engine):
         with torch.no_grad():
             y, v = self.model(encoded)
         moves = list(board.legal_moves)
-        idx = torch.tensor([move_to_index(m) for m in moves], device = y.device)
+        if not moves:
+            raise ValueError("no legal move in this position")
+        idx = torch.tensor([move_to_index(m) for m in moves], dtype = int, device = y.device)
         probs = torch.softmax(y.view(-1)[idx], dim = -1)
         indexing = torch.argsort(probs, descending=True)
         scores = probs[indexing].tolist()

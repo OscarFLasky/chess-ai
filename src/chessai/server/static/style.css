@@ -1,0 +1,166 @@
+/* Chess-AI — thème bois clair */
+
+:root {
+  --bg: #f3efe8;
+  --surface: #fffdf9;
+  --text: #2d2926;
+  --muted: #7d746c;
+  --border: #e5dccf;
+  --accent: #8b5a2b;
+  --accent-hover: #74491f;
+  --accent-soft: #ead9c2;
+  --error: #a32d2d;
+
+  --square-light: #f0d9b5;
+  --square-dark: #b58863;
+  --last-move-light: #cdd26a;
+  --last-move-dark: #aaa23a;
+
+  --width: 520px;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(60, 40, 20, 0.08), 0 8px 24px rgba(60, 40, 20, 0.12);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+/* ---------- Mise en page : une colonne centrée ---------- */
+
+.page {
+  min-height: 100vh;
+  max-width: calc(var(--width) + 2rem);
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+}
+
+.header { text-align: center; }
+.header h1 { margin: 0; font-size: 1.75rem; font-weight: 700; letter-spacing: -0.01em; }
+.subtitle { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.95rem; }
+
+/* ---------- Échiquier (surcharge des classes de chessboard.js) ---------- */
+
+#board { width: min(100%, var(--width)); }
+
+#board .board-b72b1 {
+  margin: 0 auto;
+  border: none;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+#board .white-1e1d7 { background-color: var(--square-light); color: var(--square-dark); }
+#board .black-3c85d { background-color: var(--square-dark); color: var(--square-light); }
+
+#board .last-move.white-1e1d7 { background-color: var(--last-move-light); }
+#board .last-move.black-3c85d { background-color: var(--last-move-dark); }
+
+#board .notation-322f9 { font-family: inherit; font-size: 12px; font-weight: 600; }
+
+/* ---------- Panneau d'analyse ---------- */
+
+.panel {
+  width: min(100%, var(--width));
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+}
+
+.status {
+  margin: 0;
+  min-height: 1.5em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+.status.error { color: var(--error); }
+.status.thinking::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+.btn {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.45rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.btn:hover { background: var(--accent-hover); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.empty { margin: 1rem 0 0; color: var(--muted); font-size: 0.9rem; }
+
+.moves {
+  width: 100%;
+  margin-top: 1rem;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+.moves th {
+  padding: 0 0.5rem 0.4rem;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.moves td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
+.moves tr:last-child td { border-bottom: none; }
+.moves td:first-child { font-weight: 600; }
+.moves td:nth-child(2) { color: var(--muted); white-space: nowrap; }
+.moves td:last-child { width: 50%; }
+.moves tr.best td:first-child { color: var(--accent); }
+
+.bar { height: 8px; border-radius: 4px; background: var(--accent-soft); }
+.moves tr.best .bar { background: var(--accent); }
+
+.meta {
+  margin: 0.75rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.meta:empty { display: none; }

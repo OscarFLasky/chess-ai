@@ -3,13 +3,17 @@ import chess
 
 @dataclass
 class Analysis:
-    board: chess.Board
-    Limit: float
-
+    best_move: chess.Move
+    list_moves: list[tuple[chess.Move, float]]
+    value: float
+    nbNodesVisited: int
+    elapsed: float
     
 
 
 class Engine:
+
+    name = "Engine"
 
     def analyse(self, board, limit = None):
         raise NotImplementedError
