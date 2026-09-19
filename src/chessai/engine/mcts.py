@@ -27,11 +27,11 @@ class Node:
 
     def add_virtual_loss(self, move):
         self.N[move] += 1
-        self.W[move] -= 1.0
+        self.W[move] -= 0.3
 
     def revert_virtual_loss(self, move):
         self.N[move] -= 1
-        self.W[move] += 1.0
+        self.W[move] += 0.3
 
     def q(self, move):
         n = self.N[move]
@@ -103,8 +103,6 @@ class MCTSEngine(Engine):
         if limit is not None and limit.time is not None:
             deadline = t0 + limit.time
 
-        # sims loop, par batchs : on collecte jusqu'à batch_size feuilles,
-        # on les évalue en un seul forward, puis on rétropropage
         sims = 0
         while sims < budget:
             if deadline is not None and time.perf_counter() > deadline:
@@ -116,7 +114,7 @@ class MCTSEngine(Engine):
                 while actualNode.tested and not board.is_game_over():
                     move = actualNode.select(self.c_puct)
                     path.append((actualNode, move))
-                    actualNode.add_virtual_loss(move)
+                    actualNode.add_virtual_loss(move) # applies penalty to force variation in moves
                     board.push(move)
                     if move not in actualNode.children:
                         actualNode.children[move]= Node()

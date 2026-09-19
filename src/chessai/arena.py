@@ -48,7 +48,7 @@ def game_score(board, botiswhite):
         return 1.0 if outcome.winner==botiswhite else 0.0
 
 
-def play_match(botA, botB, nbmatchs, maxmoves=400):
+def play_match(botA, botB, nbmatchs, maxmoves=400, progress_every=None):
     wins_A = 0
     wins_B= 0
     draws = 0
@@ -64,5 +64,7 @@ def play_match(botA, botB, nbmatchs, maxmoves=400):
             wins_A+=1
         else:
             wins_B+=1
+        if progress_every and (i + 1) % progress_every == 0:
+            print(f"match {i + 1}/{nbmatchs}", flush=True)
 
     return(MatchResult(botA.name, botB.name, nbmatchs, wins_A, draws, wins_B))

@@ -30,7 +30,6 @@ class PolicyEngine(Engine):
         
         masked = torch.full_like(y, float("-inf"))
         masked[rows, cols] = y[rows, cols]
-        # un seul transfert GPU -> CPU par tenseur, au lieu d'un .item() par coup
         probs = torch.softmax(masked, dim=-1)[rows, cols].tolist()
         values = v.view(-1).tolist()
 

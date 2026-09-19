@@ -255,7 +255,7 @@ definitions that would shadow the current ones if run.
 
 ## Installation
 
-```bash
+```bash 
 git clone https://github.com/laskyroin/chess-ai
 cd chess-ai
 pip install -e ".[dev]"

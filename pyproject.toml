@@ -10,6 +10,7 @@ dependencies = [
     "zstandard>=0.22",
     "fastapi[standard]",
     "slowapi>=0.1.10",
+    "torch>=2.14.0",
 ]
 
 
@@ -29,3 +30,6 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[project.scripts]
+chessai-uci = "chessai.adapters.uci:main"

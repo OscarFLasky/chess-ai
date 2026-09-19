@@ -1,28 +1,29 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import chess
 
 @dataclass
+class Limit:
+    time : float = None
+    nbNodesMax: int = None
+    maxDepth: int = None
+
+@dataclass
 class Analysis:
-    best_move: chess.Move
-    list_moves: list[tuple[chess.Move, float]]
-    value: float
+    best_move : chess.Move
+    list_moves : list[tuple[chess.Move, float]]
+    value : float
     nbNodesVisited: int
     elapsed: float
-    
-@dataclass
-class Limit:
-    time: float | None = None
-    nbNodesMax: int | None = None
-    maxDepth: int | None = None
+
+
+
 
 class Engine:
 
-    name = "Engine"
+    name = "engine"
 
-    def analyse(self, board, limit = None):
+    def analyse(self, board, limit=None):
         raise NotImplementedError
 
-    def play(self, board, limit = None):
+    def play(self, board, limit=None):
         return self.analyse(board,limit).best_move
-
-
