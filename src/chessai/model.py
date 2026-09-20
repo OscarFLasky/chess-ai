@@ -100,8 +100,12 @@ class ResBlock(nn.Module):
 
 class ChessNet(nn.Module):
 
-    def __init__(self, n_blocks = 6, n_hidden = 128, n_in = 18, n_final = 73, unfold = 3):
+    def __init__(self, n_blocks = 6, n_hidden = 128, n_in = 18, n_final = 73, unfold = 3,
+                 value_head = "tanh"):
         super().__init__()
+        # "tanh" : sortie entre -1 et 1, apprise en MSE (reseaux d'avant)
+        # "logit" : sortie brute, apprise en BCEWithLogits ; valeur = 2*sigmoid(z)-1
+        self.value_head = value_head
         self.linIn = Linear(n_in*unfold * unfold , n_hidden)
         self.bnIn = BatchNorm2d(n_hidden)
 
@@ -134,6 +138,8 @@ class ChessNet(nn.Module):
         v = self.relu(self.value_bnOut(self.valueLinOut(x)))
         v = v.reshape(B, -1)
         v = self.relu(self.value_fc1Out(v))
-        v = torch.tanh(self.value_fc2Out(v))
+        v = self.value_fc2Out(v)
+        if self.value_head == "tanh":
+            v = torch.tanh(v)
 
         return logits, v

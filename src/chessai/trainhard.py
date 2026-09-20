@@ -1,0 +1,173 @@
+"""Entrainement sur le gros jeu (>2200 Elo), reparti de zero.
+
+Differences avec train.py :
+  - X.npy est compresse en bits une fois pour toutes : 80 Go -> 9,5 Go, puis charge en RAM ;
+  - le 18e plan (compteur des 50 coups) est supprime, il vaut 0 partout dans les donnees ;
+  - train / validation / test sont decoupes par blocs contigus et non par positions,
+    sinon des positions d'une meme partie se retrouvent des deux cotes ;
+  - tete value en logit brut, apprise en BCEWithLogits au lieu de tanh + MSE.
+
+Reglages par variables d'environnement : CHESSAI_DATA, CHESSAI_PACKED, CHESSAI_RUNS,
+CHESSAI_STEPS, CHESSAI_BATCH, CHESSAI_LR, CHESSAI_NBLOCKS, CHESSAI_NHIDDEN, CHESSAI_MMAP.
+"""
+
+import os
+import time
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+from chessai.model import ChessNet
+
+DATA = Path(os.environ.get("CHESSAI_DATA", "C:/Users/Faure/chess-dataset/full"))
+PACKED = Path(os.environ.get("CHESSAI_PACKED", DATA / "Xbits17.npy"))
+RUNS = Path(os.environ.get("CHESSAI_RUNS", "runs/hard"))
+
+N_PLANES = 17                          # on jette le plan 17 (compteur des 50 coups)
+BYTES_PER_POS = N_PLANES * 64 // 8     # 136 octets par position au lieu de 1152
+
+BLOCKS = 1000                          # decoupage du fichier en blocs contigus
+VAL_BLOCKS = 20                        # 2 % pour la validation
+TEST_BLOCKS = 20                       # 2 % gardes pour la fin, jamais regardes
+
+STEPS = int(os.environ.get("CHESSAI_STEPS", 60_000))
+BATCH = int(os.environ.get("CHESSAI_BATCH", 1024))
+LR = float(os.environ.get("CHESSAI_LR", 1e-3))
+N_BLOCKS_NET = int(os.environ.get("CHESSAI_NBLOCKS", 6))
+N_HIDDEN = int(os.environ.get("CHESSAI_NHIDDEN", 128))
+WARMUP = 500
+EVAL_EVERY = 500
+EVAL_BATCH = 4096
+CKPT_EVERY = 2000
+SEED = 44
+
+
+# compression en bits, une seule fois : X.npy (N, 18, 8, 8) -> (N, 136), sans le 18e plan
+if not PACKED.exists():
+    src = np.load(DATA / "X.npy", mmap_mode="r")
+    print(f"compression de {DATA/'X.npy'} : {len(src)} positions, {src.nbytes/2**30:.1f} Go", flush=True)
+    packed = np.lib.format.open_memmap(PACKED, mode="w+", dtype=np.uint8,
+                                       shape=(len(src), BYTES_PER_POS))
+    chunk = 50_000
+    t0 = time.perf_counter()
+    for start in range(0, len(src), chunk):
+        stop = min(start + chunk, len(src))
+        a = np.asarray(src[start:stop, :N_PLANES])
+        packed[start:stop] = np.packbits(a.reshape(stop - start, -1), axis=1)
+        if (start // chunk) % 40 == 0:
+            print(f"  {stop/len(src)*100:5.1f} %  ({time.perf_counter()-t0:.0f} s)", flush=True)
+    packed.flush()
+    print(f"  termine en {time.perf_counter()-t0:.0f} s -> {PACKED} "
+          f"({packed.nbytes/2**30:.1f} Go)", flush=True)
+    del src, packed
+
+
+# en memmap, 1024 lignes tirees au hasard dans 9,5 Go coutent ~1 s : le GPU attend.
+# On charge donc tout en RAM (CHESSAI_MMAP=1 pour revenir au memmap si la RAM manque).
+if os.environ.get("CHESSAI_MMAP"):
+    Xb = np.load(PACKED, mmap_mode="r")
+else:
+    print(f"chargement de {PACKED.name} en RAM ({PACKED.stat().st_size/2**30:.1f} Go)...", flush=True)
+    t_load = time.perf_counter()
+    Xb = np.load(PACKED)
+    print(f"  charge en {time.perf_counter()-t_load:.0f} s", flush=True)
+
+Y = np.load(DATA / "policy.npy")     # int16, ~150 Mo
+V = np.load(DATA / "value.npy")      # int8, ~75 Mo
+N = len(Xb)
+assert len(Y) == N and len(V) == N, "les trois fichiers n'ont pas la meme longueur"
+
+
+# decoupage par blocs contigus : une partie ne peut etre coupee qu'aux frontieres de blocs
+bounds = np.linspace(0, N, BLOCKS + 1).astype(np.int64)
+rng = np.random.default_rng(SEED)
+order = rng.permutation(BLOCKS)
+val_b = order[:VAL_BLOCKS]
+test_b = order[VAL_BLOCKS:VAL_BLOCKS + TEST_BLOCKS]
+train_b = order[VAL_BLOCKS + TEST_BLOCKS:]
+
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+if device == "cpu":
+    torch.set_num_threads(min(8, os.cpu_count() or 1))
+    print("ATTENTION : pas de CUDA, l'entrainement sera environ 100x plus lent.")
+
+
+def get_batch(blocks, size):
+    b = rng.choice(blocks, size)
+    lo, hi = bounds[b], bounds[b + 1]
+    ix = (lo + rng.random(size) * (hi - lo)).astype(np.int64)
+    ix.sort()
+    bits = np.unpackbits(Xb[ix], axis=1)         # (size, 1088)
+    Xbatch = torch.from_numpy(bits).view(size, N_PLANES, 8, 8).float()
+    Ybatch = torch.from_numpy(Y[ix].astype(np.int64))
+    Vbatch = torch.from_numpy(V[ix].astype(np.float32))
+    return Xbatch.to(device), Ybatch.to(device), Vbatch.to(device)
+
+
+model = ChessNet(n_blocks=N_BLOCKS_NET, n_hidden=N_HIDDEN, n_in=N_PLANES,
+                 value_head="logit").to(device)
+opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-2)
+params = sum(p.numel() for p in model.parameters())
+print(f"{N} positions | {len(train_b)} blocs train, {len(val_b)} val, {len(test_b)} test")
+print(f"reseau {N_BLOCKS_NET} blocs x {N_HIDDEN} canaux, {params/1e6:.2f} M parametres, "
+      f"device {device}, batch {BATCH}, {STEPS} pas")
+
+RUNS.mkdir(parents=True, exist_ok=True)
+model.train()
+lossi = []
+t0 = time.perf_counter()
+
+for i in range(STEPS):
+
+    # learning rate : echauffement puis decroissance en cosinus
+    # float() obligatoire : np.cos renvoie un numpy.float64, que torch.load refuse ensuite
+    lr = float(LR * (i + 1) / WARMUP if i < WARMUP else
+               LR * 0.5 * (1 + np.cos(np.pi * (i - WARMUP) / max(1, STEPS - WARMUP))))
+    for pg in opt.param_groups:
+        pg["lr"] = lr
+
+    # batching
+    Xbatch, Ybatch, Vbatch = get_batch(train_b, BATCH)
+
+    # forward pass
+    logits, value = model(Xbatch)
+    loss_p = F.cross_entropy(logits, Ybatch)
+    # cible du value : 1 gain blanc, 0.5 nulle, 0 gain noir
+    loss_v = F.binary_cross_entropy_with_logits(value.squeeze(-1), (Vbatch + 1) / 2)
+    loss = loss_p + loss_v
+
+    # backward pass
+    opt.zero_grad(set_to_none=True)
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
+    # update
+    opt.step()
+
+    # tracking stats
+    lossi.append(loss.item())
+    if i % EVAL_EVERY == 0:
+        model.eval()
+        with torch.no_grad():
+            Xval, Yval, Vval = get_batch(val_b, EVAL_BATCH)
+            lv, vv = model(Xval)
+            ce = F.cross_entropy(lv, Yval).item()
+            bce = F.binary_cross_entropy_with_logits(vv.squeeze(-1), (Vval + 1) / 2).item()
+        model.train()
+        speed = BATCH * (i + 1) / (time.perf_counter() - t0)
+        print(f"{i:7d}  train {loss.item():.3f} (p {loss_p.item():.3f} v {loss_v.item():.3f})"
+              f"  | val ce {ce:.3f} bce {bce:.3f}  | {speed:.0f} pos/s", flush=True)
+
+    if i % CKPT_EVERY == 0 and i > 0:
+        torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "step": i,
+                    "n_in": N_PLANES, "n_blocks": N_BLOCKS_NET, "n_hidden": N_HIDDEN,
+                    "value_head": "logit", "seed": SEED, "blocks": BLOCKS,
+                    "val_blocks": val_b.tolist()}, RUNS / f"ckpt_{i}.pt")
+
+torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "step": STEPS,
+            "n_in": N_PLANES, "n_blocks": N_BLOCKS_NET, "n_hidden": N_HIDDEN,
+            "value_head": "logit", "seed": SEED, "blocks": BLOCKS,
+            "val_blocks": val_b.tolist()}, RUNS / f"ckpt_{STEPS}.pt")

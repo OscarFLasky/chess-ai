@@ -220,6 +220,7 @@ __marimo__/
 data/
 runs/
 *.pt
+!parameters/*.pt
 *.pgn
 *.zst
 *.npy

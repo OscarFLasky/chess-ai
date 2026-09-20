@@ -3,6 +3,7 @@
 import math
 import os
 import sys
+from pathlib import Path
 
 import chess
 
@@ -13,8 +14,8 @@ from ..engine.policy import PolicyEngine
 NAME = "ChessAI"
 AUTHOR = "laskyroin"
 
-DEFAULT_CKPT = os.environ.get("CHESSAI_CKPT", "parameters/ckpt_32000.pt")
-DEFAULT_SIMS = int(os.environ.get("CHESSAI_SIMS", "200"))
+DEFAULT_CKPT = os.environ.get("CHESSAI_CKPT", "parameters/ckpt_60000.pt")
+DEFAULT_SIMS = int(os.environ.get("CHESSAI_SIMS", "400"))
 DEFAULT_KIND = os.environ.get("CHESSAI_ENGINE", "mcts")
 
 MAX_SIMS = 100_000
@@ -40,7 +41,7 @@ def value_to_cp(value):
     return int(111.7 * math.tan(1.5620688 * value))
 
 
-def parse_position(board, tokens):
+def parse_position(board, tokens, chess960=False):
     if not tokens:
         return board
 
@@ -51,11 +52,11 @@ def parse_position(board, tokens):
         head, moves = tokens, []
 
     if head and head[0] == "startpos":
-        board = chess.Board()
+        board = chess.Board(chess960=chess960)
     elif head and head[0] == "fen":
-        board = chess.Board(" ".join(head[1:]))
+        board = chess.Board(" ".join(head[1:]), chess960=chess960)
     else:
-        board = chess.Board()
+        board = chess.Board(chess960=chess960)
 
     for uci in moves:
         try:
@@ -121,6 +122,7 @@ def handle_go(engine, board, tokens):
 
 def main():
     engine = None
+    chess960 = False
     board = chess.Board()
 
     for raw in sys.stdin:
@@ -132,6 +134,7 @@ def main():
         if cmd == "uci":
             out(f"id name {NAME}")
             out(f"id author {AUTHOR}")
+            out("option name UCI_Chess960 type check default false")
             out("uciok")
 
         elif cmd == "isready":
@@ -140,11 +143,18 @@ def main():
                 log(f"moteur chargé : {engine.name}")
             out("readyok")
 
+        elif cmd == "setoption":
+            # setoption name UCI_Chess960 value true
+            if "UCI_Chess960" in rest:
+                chess960 = rest[-1].lower() == "true"
+                board = chess.Board(chess960=chess960)
+                log(f"chess960 = {chess960}")
+
         elif cmd == "ucinewgame":
-            board = chess.Board()
+            board = chess.Board(chess960=chess960)
 
         elif cmd == "position":
-            board = parse_position(board, rest)
+            board = parse_position(board, rest, chess960)
 
         elif cmd == "go":
             if engine is None:

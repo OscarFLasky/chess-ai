@@ -105,7 +105,9 @@ class MCTSEngine(Engine):
 
         sims = 0
         while sims < budget:
-            if deadline is not None and time.perf_counter() > deadline:
+            # on teste l'echeance apres le premier batch : si le temps est deja depasse
+            # a l'entree, aucune simulation n'est faite et total vaut 0
+            if sims > 0 and deadline is not None and time.perf_counter() > deadline:
                 break
             pending = []
             for i in range(min(self.batch_size, budget - sims)):
