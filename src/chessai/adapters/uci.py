@@ -20,6 +20,10 @@ DEFAULT_KIND = os.environ.get("CHESSAI_ENGINE", "mcts")
 
 MAX_SIMS = 100_000
 
+#making it think less in the opening, to avoid wasting time on book moves
+OPENING_MOVES = 8
+OPENING_NODES = 1200
+
 
 def out(line):
     print(line, flush=True)
@@ -97,7 +101,8 @@ def parse_go(tokens, board):
         inc = args.get("winc" if board.turn == chess.WHITE else "binc", 0)
         budget = remaining / 30.0 + inc * 0.8
         budget = max(0.05, budget / 1000.0)
-        return Limit(time=budget, nbNodesMax=MAX_SIMS)
+        nodes = OPENING_NODES if board.fullmove_number <= OPENING_MOVES else MAX_SIMS
+        return Limit(time = budget, nbNodesMax= nodes)
 
     return Limit()
 
