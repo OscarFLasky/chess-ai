@@ -144,7 +144,7 @@ async function botMove() {
     const res = await fetch("/moves/analyse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fen: game.fen(), top_k: 5, temperature: 0.0 }),
+      body: JSON.stringify({ fen: game.fen(), top_k: 5 }),
     });
     if (id !== gameId) return;
 
