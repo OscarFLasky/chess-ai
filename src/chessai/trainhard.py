@@ -1,15 +1,4 @@
-"""Entrainement sur le gros jeu (>2200 Elo), reparti de zero.
 
-Differences avec train.py :
-  - X.npy est compresse en bits une fois pour toutes : 80 Go -> 9,5 Go, puis charge en RAM ;
-  - le 18e plan (compteur des 50 coups) est supprime, il vaut 0 partout dans les donnees ;
-  - train / validation / test sont decoupes par blocs contigus et non par positions,
-    sinon des positions d'une meme partie se retrouvent des deux cotes ;
-  - tete value en logit brut, apprise en BCEWithLogits au lieu de tanh + MSE.
-
-Reglages par variables d'environnement : CHESSAI_DATA, CHESSAI_PACKED, CHESSAI_RUNS,
-CHESSAI_STEPS, CHESSAI_BATCH, CHESSAI_LR, CHESSAI_NBLOCKS, CHESSAI_NHIDDEN, CHESSAI_MMAP.
-"""
 
 import os
 import time
@@ -25,12 +14,12 @@ DATA = Path(os.environ.get("CHESSAI_DATA", "C:/Users/Faure/chess-dataset/full"))
 PACKED = Path(os.environ.get("CHESSAI_PACKED", DATA / "Xbits17.npy"))
 RUNS = Path(os.environ.get("CHESSAI_RUNS", "runs/hard"))
 
-N_PLANES = 17                          # on jette le plan 17 (compteur des 50 coups)
-BYTES_PER_POS = N_PLANES * 64 // 8     # 136 octets par position au lieu de 1152
+N_PLANES = 17                          
+BYTES_PER_POS = N_PLANES * 64 // 8     
 
-BLOCKS = 1000                          # decoupage du fichier en blocs contigus
-VAL_BLOCKS = 20                        # 2 % pour la validation
-TEST_BLOCKS = 20                       # 2 % gardes pour la fin, jamais regardes
+BLOCKS = 1000                          
+VAL_BLOCKS = 20                        
+TEST_BLOCKS = 20                       
 
 STEPS = int(os.environ.get("CHESSAI_STEPS", 60_000))
 BATCH = int(os.environ.get("CHESSAI_BATCH", 1024))
@@ -44,7 +33,7 @@ CKPT_EVERY = 2000
 SEED = 44
 
 
-# compression en bits, une seule fois : X.npy (N, 18, 8, 8) -> (N, 136), sans le 18e plan
+# X.npy (N, 18, 8, 8) -> (N, 136) without 18th layer
 if not PACKED.exists():
     src = np.load(DATA / "X.npy", mmap_mode="r")
     print(f"compression de {DATA/'X.npy'} : {len(src)} positions, {src.nbytes/2**30:.1f} Go", flush=True)
@@ -64,8 +53,8 @@ if not PACKED.exists():
     del src, packed
 
 
-# en memmap, 1024 lignes tirees au hasard dans 9,5 Go coutent ~1 s : le GPU attend.
-# On charge donc tout en RAM (CHESSAI_MMAP=1 pour revenir au memmap si la RAM manque).
+
+
 if os.environ.get("CHESSAI_MMAP"):
     Xb = np.load(PACKED, mmap_mode="r")
 else:
@@ -74,13 +63,13 @@ else:
     Xb = np.load(PACKED)
     print(f"  charge en {time.perf_counter()-t_load:.0f} s", flush=True)
 
-Y = np.load(DATA / "policy.npy")     # int16, ~150 Mo
-V = np.load(DATA / "value.npy")      # int8, ~75 Mo
+Y = np.load(DATA / "policy.npy")     
+V = np.load(DATA / "value.npy")      
 N = len(Xb)
 assert len(Y) == N and len(V) == N, "les trois fichiers n'ont pas la meme longueur"
 
 
-# decoupage par blocs contigus : une partie ne peut etre coupee qu'aux frontieres de blocs
+
 bounds = np.linspace(0, N, BLOCKS + 1).astype(np.int64)
 rng = np.random.default_rng(SEED)
 order = rng.permutation(BLOCKS)
@@ -100,7 +89,7 @@ def get_batch(blocks, size):
     lo, hi = bounds[b], bounds[b + 1]
     ix = (lo + rng.random(size) * (hi - lo)).astype(np.int64)
     ix.sort()
-    bits = np.unpackbits(Xb[ix], axis=1)         # (size, 1088)
+    bits = np.unpackbits(Xb[ix], axis=1)         
     Xbatch = torch.from_numpy(bits).view(size, N_PLANES, 8, 8).float()
     Ybatch = torch.from_numpy(Y[ix].astype(np.int64))
     Vbatch = torch.from_numpy(V[ix].astype(np.float32))
@@ -122,8 +111,8 @@ t0 = time.perf_counter()
 
 for i in range(STEPS):
 
-    # learning rate : echauffement puis decroissance en cosinus
-    # float() obligatoire : np.cos renvoie un numpy.float64, que torch.load refuse ensuite
+    
+    
     lr = float(LR * (i + 1) / WARMUP if i < WARMUP else
                LR * 0.5 * (1 + np.cos(np.pi * (i - WARMUP) / max(1, STEPS - WARMUP))))
     for pg in opt.param_groups:
