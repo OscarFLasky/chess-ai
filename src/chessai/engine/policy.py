@@ -10,7 +10,7 @@ class PolicyEngine(Engine):
     name = "Policy"
 
 
-    def __init__(self, ckpt_path="runs/ckpt_32000.pt", device=None):
+    def __init__(self, ckpt_path="parameters/ckpt_60000.pt", device=None):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         ckpt = torch.load(ckpt_path, map_location=self.device)
         # les checkpoints recents decrivent leur reseau ; les anciens sont en 18 plans + tanh

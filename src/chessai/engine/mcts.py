@@ -80,7 +80,7 @@ class MCTSEngine(Engine):
 
     def analyse(self, board, limit=None):
 
-        if not any(board.legal_moves):
+        if not any(board.legal_moves) or board.is_game_over():
             raise ValueError
         #time
         t0 = time.perf_counter()
@@ -105,8 +105,7 @@ class MCTSEngine(Engine):
 
         sims = 0
         while sims < budget:
-            # on teste l'echeance apres le premier batch : si le temps est deja depasse
-            # a l'entree, aucune simulation n'est faite et total vaut 0
+          
             if sims > 0 and deadline is not None and time.perf_counter() > deadline:
                 break
             pending = []
@@ -126,6 +125,9 @@ class MCTSEngine(Engine):
                     outcome= board.outcome()
                     value = 0.0 if outcome.winner is None else -1.0
                     self.backup(path, value)
+                    sims += 1
+                elif board.is_repetition(2) or board.is_fifty_moves():
+                    self.backup(path, 0.0)
                     sims += 1
                 elif actualNode.pending:
                     # feuille déjà en attente dans ce batch : on annule cette descente
