@@ -126,7 +126,7 @@ class MCTSEngine(Engine):
                     value = 0.0 if outcome.winner is None else -1.0
                     self.backup(path, value)
                     sims += 1
-                elif board.is_repetition(2) or board.is_fifty_moves():
+                elif board.is_repetition(3) or board.is_fifty_moves():
                     self.backup(path, 0.0)
                     sims += 1
                 elif actualNode.pending:
